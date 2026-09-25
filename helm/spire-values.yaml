@@ -1,0 +1,7 @@
+global:
+  spire:
+    clusterName: bsides-kind
+    trustDomain: prod.demo
+    strictMode: false
+spiffe-oidc-discovery-provider:
+  enabled: false

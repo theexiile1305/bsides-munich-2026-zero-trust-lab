@@ -1,0 +1,176 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shop
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: order
+  namespace: shop
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: other
+  namespace: shop
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: inventory
+  namespace: shop
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: keycloak}
+  template:
+    metadata:
+      labels: {app: keycloak}
+    spec:
+      containers:
+        - name: keycloak
+          image: bsides-keycloak:26.7.4
+          imagePullPolicy: Never
+          args: ["start-dev", "--import-realm"]
+          env:
+            - {name: KC_HOSTNAME, value: "https://keycloak.shop.svc.cluster.local:8443"}
+            - {name: KC_HTTPS_CERTIFICATE_FILE, value: "/opt/keycloak/tls/tls.crt"}
+            - {name: KC_HTTPS_CERTIFICATE_KEY_FILE, value: "/opt/keycloak/tls/tls.key"}
+            - {name: KC_HTTPS_CLIENT_AUTH, value: "required"}
+            - {name: KC_TRUSTSTORE_PATHS, value: "/opt/keycloak/trust/bundle.pem"}
+            - {name: KC_HTTP_ENABLED, value: "false"}
+            - {name: KC_BOOTSTRAP_ADMIN_USERNAME, value: "admin"}
+            - {name: KC_BOOTSTRAP_ADMIN_PASSWORD, value: "lab-only-change-me"}
+          ports: [{containerPort: 8443, name: https}]
+          readinessProbe:
+            tcpSocket: {port: 8443}
+            initialDelaySeconds: 20
+            periodSeconds: 5
+          volumeMounts:
+            - {name: tls, mountPath: /opt/keycloak/tls, readOnly: true}
+            - {name: trust, mountPath: /opt/keycloak/trust, readOnly: true}
+            - {name: realms, mountPath: /opt/keycloak/data/import, readOnly: true}
+      volumes:
+        - name: tls
+          secret: {secretName: keycloak-tls}
+        - name: trust
+          configMap: {name: spire-trust-bundle}
+        - name: realms
+          configMap: {name: keycloak-realms}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: shop
+spec:
+  selector: {app: keycloak}
+  ports: [{name: https, port: 8443, targetPort: 8443}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory
+  namespace: shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: inventory}
+  template:
+    metadata:
+      labels: {app: inventory}
+    spec:
+      serviceAccountName: inventory
+      containers:
+        - name: inventory
+          image: bsides-lab:1.0.0
+          imagePullPolicy: Never
+          args: ["inventory"]
+          env: [{name: SPIFFE_ENDPOINT_SOCKET, value: "unix:///run/spire/sockets/spire-agent.sock"}]
+          ports: [{containerPort: 8443, name: https}]
+          volumeMounts:
+            - {name: spiffe, mountPath: /run/spire/sockets, readOnly: true}
+            - {name: keycloak-ca, mountPath: /etc/keycloak-ca, readOnly: true}
+        - name: opa
+          image: openpolicyagent/opa:1.21.0
+          args: ["run", "--server", "--addr=127.0.0.1:8181", "/policy/inventory.rego"]
+          volumeMounts:
+            - {name: policy, mountPath: /policy, readOnly: true}
+      volumes:
+        - name: spiffe
+          csi: {driver: csi.spiffe.io, readOnly: true}
+        - name: keycloak-ca
+          secret: {secretName: keycloak-tls}
+        - name: policy
+          configMap: {name: inventory-policy}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory
+  namespace: shop
+spec:
+  selector: {app: inventory}
+  ports: [{name: https, port: 8443, targetPort: 8443}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order
+  namespace: shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: order}
+  template:
+    metadata:
+      labels: {app: order}
+    spec:
+      serviceAccountName: order
+      containers:
+        - name: order
+          image: bsides-lab:1.0.0
+          imagePullPolicy: Never
+          command: ["/bin/sleep", "365d"]
+          env: [{name: SPIFFE_ENDPOINT_SOCKET, value: "unix:///run/spire/sockets/spire-agent.sock"}]
+          volumeMounts:
+            - {name: spiffe, mountPath: /run/spire/sockets, readOnly: true}
+            - {name: keycloak-ca, mountPath: /etc/keycloak-ca, readOnly: true}
+      volumes:
+        - name: spiffe
+          csi: {driver: csi.spiffe.io, readOnly: true}
+        - name: keycloak-ca
+          secret: {secretName: keycloak-tls}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: other
+  namespace: shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: other}
+  template:
+    metadata:
+      labels: {app: other}
+    spec:
+      serviceAccountName: other
+      containers:
+        - name: other
+          image: bsides-lab:1.0.0
+          imagePullPolicy: Never
+          command: ["/bin/sleep", "365d"]
+          env: [{name: SPIFFE_ENDPOINT_SOCKET, value: "unix:///run/spire/sockets/spire-agent.sock"}]
+          volumeMounts:
+            - {name: spiffe, mountPath: /run/spire/sockets, readOnly: true}
+      volumes:
+        - name: spiffe
+          csi: {driver: csi.spiffe.io, readOnly: true}
