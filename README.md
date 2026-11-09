@@ -17,18 +17,23 @@ make test
 make policy-test
 ```
 
-Expected `make test` output:
+## Presenting the demo
+
+`make demo` narrates each check: what is attempted, the caller's SPIFFE ID, the decoded token claims, the client's result, and the reason inventory logged for its decision.
 
 ```text
-200  order → inventory (GET, inventory-read)
-401  token audience = billing
-403  inventory-read cannot authorize POST
-403  peer = spiffe://prod.demo/ns/shop/sa/other
-401  staging issuer at prod inventory
+[3/4] Deny: right token, wrong action
+    order tries to POST (write) with a read-only scope.
+    caller: spiffe://prod.demo/ns/shop/sa/order   request: POST /inventory/items/42
+    token claims: iss=prod  aud=["inventory"]  azp=order  scope=inventory-read  lifetime=300s
+    ✗ 403 DENIED
+    inventory log: decision=deny status=403 reason="opa policy denied" peer=spiffe://prod.demo/ns/shop/sa/order azp=order scope="inventory-read" method=POST path=/inventory/items/42
 ```
 
-`make demo CASE=allow` and `make demo CASE=deny` isolate the two stage fallback sections. The main `make demo` runs four checks. A failed expectation exits nonzero. `make down` deletes the local `bsides-zt` kind cluster.
-
+- `PAUSE=1 make demo` waits for Enter between steps. `NO_COLOR=1` disables colour (colour is also off when piped).
+- `make logs` follows the inventory log; put it in a second terminal pane for the audience.
+- `CASE=allow`, `CASE=deny` isolate the stage fallback sections, `CASE=staging` runs the staging-issuer check (also part of `make test`). `make demo` runs four checks; a failed expectation exits nonzero.
+- `make down` deletes the local `bsides-zt` kind cluster.
 ## What the denial cases prove
 
 | Case | Checks reached | Response |

@@ -310,15 +310,18 @@ func serveInventory(ctx context.Context) error {
 	mux.HandleFunc("/inventory/items/42", func(w http.ResponseWriter, r *http.Request) {
 		raw := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if raw == "" || raw == r.Header.Get("Authorization") {
+			log.Printf("decision=deny status=401 reason=%q method=%s", "missing bearer token", r.Method)
 			http.Error(w, "invalid_token", 401)
 			return
 		}
 		token, err := validateToken(r.Context(), cache, raw)
 		if err != nil {
+			log.Printf("decision=deny status=401 reason=%q iss=%s aud=%v method=%s", err.Error(), token.Iss, token.Aud, r.Method)
 			http.Error(w, "invalid_token", 401)
 			return
 		}
 		if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 || len(r.TLS.PeerCertificates[0].URIs) != 1 {
+			log.Printf("decision=deny status=403 reason=%q method=%s", "no single SPIFFE ID on peer", r.Method)
 			http.Error(w, "invalid_peer", 403)
 			return
 		}
@@ -345,9 +348,11 @@ func serveInventory(ctx context.Context) error {
 			return
 		}
 		if !decision.Result {
+			log.Printf("decision=deny status=403 reason=%q peer=%s azp=%s scope=%q method=%s path=%s", "opa policy denied", peer, token.Azp, token.Scope, r.Method, r.URL.Path)
 			http.Error(w, "forbidden", 403)
 			return
 		}
+		log.Printf("decision=allow status=200 peer=%s azp=%s scope=%q method=%s path=%s", peer, token.Azp, token.Scope, r.Method, r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{"sku":"42","available":true}`)
 	})

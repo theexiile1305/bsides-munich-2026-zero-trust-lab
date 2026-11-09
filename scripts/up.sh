@@ -2,17 +2,22 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p .local
+banner() { printf '\n==> %s\n' "$1"; }
+banner "Creating kind cluster"
 if ! kind get clusters | grep -qx 'bsides-zt'; then
   kind create cluster --name bsides-zt --image kindest/node:v1.35.5
 fi
 kubectl config use-context kind-bsides-zt >/dev/null
+banner "Installing SPIRE (workload identity)"
 helm upgrade --install spire-crds spire-crds --repo https://spiffe.github.io/helm-charts-hardened/ --version 0.6.1 --namespace spire --create-namespace --wait --timeout 8m
 helm upgrade --install spire spire --repo https://spiffe.github.io/helm-charts-hardened/ --version 0.30.0 --namespace spire --values helm/spire-values.yaml --wait --timeout 8m
 
+banner "Building and loading images"
 docker build -t bsides-keycloak:26.7.4 extension
 docker build -t bsides-lab:1.0.0 app
 kind load docker-image --name bsides-zt bsides-keycloak:26.7.4 bsides-lab:1.0.0
 
+banner "Preparing shop namespace, TLS and config"
 kubectl create namespace shop --dry-run=client -o yaml | kubectl apply -f -
 if [[ ! -s .local/tls.crt || ! -s .local/tls.key ]]; then
   openssl req -x509 -newkey rsa:3072 -sha256 -nodes -days 7 \
@@ -25,10 +30,12 @@ kubectl -n shop create configmap keycloak-realms --from-file=realm/prod-realm.js
 kubectl -n shop create configmap inventory-policy --from-file=inventory.rego=policy/inventory.rego --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n spire exec spire-server-0 -c spire-server -- spire-server bundle show -format pem > .local/bundle.pem
 kubectl -n shop create configmap spire-trust-bundle --from-file=bundle.pem=.local/bundle.pem --dry-run=client -o yaml | kubectl apply -f -
+banner "Deploying keycloak, inventory, order, other"
 kubectl apply -f k8s/shop.yaml
 kubectl -n shop rollout status deployment/keycloak --timeout=5m
 kubectl -n shop rollout status deployment/inventory --timeout=5m
 kubectl -n shop rollout status deployment/order --timeout=5m
 kubectl -n shop rollout status deployment/other --timeout=5m
+banner "Configuring Keycloak SPIFFE client authentication"
 ./scripts/configure-keycloak.sh
 printf 'Ready. Run make demo, then make test.\n'
