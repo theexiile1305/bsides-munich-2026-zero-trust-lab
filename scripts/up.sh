@@ -13,9 +13,9 @@ helm upgrade --install spire-crds spire-crds --repo https://spiffe.github.io/hel
 helm upgrade --install spire spire --repo https://spiffe.github.io/helm-charts-hardened/ --version 0.30.0 --namespace spire --values helm/spire-values.yaml --wait --timeout 8m
 
 banner "Building and loading images"
-docker build -t bsides-keycloak:26.7.4 extension
+docker build -t bsides-keycloak:26.8.2 extension
 docker build -t bsides-lab:1.0.0 app
-kind load docker-image --name bsides-zt bsides-keycloak:26.7.4 bsides-lab:1.0.0
+kind load docker-image --name bsides-zt bsides-keycloak:26.8.2 bsides-lab:1.0.0
 
 banner "Preparing shop namespace, TLS and config"
 kubectl create namespace shop --dry-run=client -o yaml | kubectl apply -f -

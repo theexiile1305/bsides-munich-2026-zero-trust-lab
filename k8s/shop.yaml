@@ -36,7 +36,7 @@ spec:
     spec:
       containers:
         - name: keycloak
-          image: bsides-keycloak:26.7.4
+          image: bsides-keycloak:26.8.2
           imagePullPolicy: Never
           args: ["start-dev", "--import-realm"]
           env:

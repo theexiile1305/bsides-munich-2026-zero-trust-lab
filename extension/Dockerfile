@@ -4,6 +4,6 @@ COPY pom.xml .
 COPY src ./src
 RUN mvn -B -q -DskipTests package
 
-FROM quay.io/keycloak/keycloak:26.7.4@sha256:82a77884f3af238beab1e7afd63b5f530e1b5c0590bd7aa60b40a40463e29b2c
+FROM quay.io/keycloak/keycloak:26.8.2@sha256:22f1cf60e26bed1808e45b838ddeac962075818fe97e0858b542308d2b91e83e
 COPY --from=build /src/target/keycloak-spiffe-client-auth-1.0.0.jar /opt/keycloak/providers/
 RUN /opt/keycloak/bin/kc.sh build
